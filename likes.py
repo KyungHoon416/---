@@ -5,26 +5,26 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from bs4 import BeautifulSoup
 import time
 import pandas as pd
 
-# ChromeDriver 경로 설정
+# ChromeDriver 설정
 service = Service(ChromeDriverManager().install())
 options = webdriver.ChromeOptions()
-options.add_argument('--start-maximized')  # 브라우저 최대화
+options.add_argument('--start-maximized')
 driver = webdriver.Chrome(service=service, options=options)
 
 # 인스타그램 로그인
 def login_instagram(username, password):
     driver.get("https://www.instagram.com/accounts/login/")
     WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.NAME, "username")))
-    time.sleep(3)
     driver.find_element(By.NAME, "username").send_keys(username)
     driver.find_element(By.NAME, "password").send_keys(password)
     driver.find_element(By.NAME, "password").send_keys(Keys.RETURN)
-    time.sleep(5)  # 로그인 대기
+    time.sleep(5)
 
-# 특정 태그 검색 및 게시물 좋아요 포함 크롤링
+# 특정 태그 크롤링
 def crawl_hashtag_with_likes(hashtag, max_posts=10):
     driver.get(f"https://www.instagram.com/explore/tags/{hashtag}/")
     time.sleep(5)
@@ -38,35 +38,41 @@ def crawl_hashtag_with_likes(hashtag, max_posts=10):
         driver.find_element(By.TAG_NAME, "body").send_keys(Keys.END)
         time.sleep(3)
 
-    # 게시물 내용, 사용자 정보 및 좋아요 수 수집
+    # 게시물 정보 수집
     posts_data = []
     for link in list(links)[:max_posts]:
         driver.get(link)
         time.sleep(3)
 
-        # 게시물 내용
+        # BeautifulSoup로 HTML 파싱
+        soup = BeautifulSoup(driver.page_source, 'html.parser')
+        
+        # print(f"driver.page_source {driver.page_source}")
+        # print(f"soup {soup}")
+
+        # 게시물 텍스트
         try:
-            content = driver.find_element(By.XPATH, "//div[contains(@class, '_a9zs')]").text
-        except Exception as e:
-            print(f"Error fetching content for {link}: {e}")
+            content = soup.find('div', {'class': '_a9zs'}).text
+        except AttributeError:
             content = "No text available"
 
-        # 사용자 프로필 정보
+        # 사용자 정보
         try:
-            user_tag = driver.find_element(By.XPATH, "//a[contains(@class, '_a6hd')]").text
-            profile_url = driver.find_element(By.XPATH, "//a[contains(@class, '_a6hd')]").get_attribute("href")
-        except Exception as e:
-            print(f"Error fetching user info for {link}: {e}")
+            user_tag = soup.find('a', {'class': '_a6hd'}).text
+            profile_url = "https://www.instagram.com" + soup.find('a', {'class': '_a6hd'})['href']
+        except AttributeError:
             user_tag = "Unknown"
             profile_url = "Unknown"
 
-        # 좋아요 수
+        # 좋아요 수 (수정된 접근 방식)
         try:
-            likes_element = driver.find_element(By.XPATH, "//span[contains(text(), 'likes') or contains(text(), 'like')]")
-            likes = likes_element.text
-        except Exception as e:
-            print(f"Error fetching likes for {link}: {e}")
-            likes = "0"
+            likes_element = soup.find('span', string=lambda text: 'like' in text.lower())
+            if likes_element:
+                likes = likes_element.text
+            else:
+                likes = "Could not retrieve"
+        except Exception:
+            likes = "Could not retrieve"
 
         posts_data.append({
             "post_link": link,
